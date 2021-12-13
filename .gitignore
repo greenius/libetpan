@@ -43,6 +43,8 @@ xcuserdata/
 /install-sh
 /libetpan-config
 /libetpan-config.h
+/libetpan-config.h.in
+/libetpan-config.in
 /libtool
 /missing
 /src/Makefile
@@ -160,6 +162,7 @@ third-party
 /build-windows/libetpan.VC.db
 /.vs
 /build-windows/.vs/libetpan/v15
+/build-windows/libetpan_version.h
 
 .idea/
 libetpan.pc
