@@ -6505,7 +6505,7 @@ mailimf_resent_bcc_parse(const char * message, size_t length,
   * result = bcc;
   * indx = cur_token;
 
-  return TRUE;
+  return MAILIMF_NO_ERROR;
 
  free_addr_list:
   mailimf_address_list_free(addr_list);
