@@ -60,7 +60,7 @@
 
 #include "mailsasl.h"
 #include "mailpop3_types.h"
-
+#include "base64.h"
 
 
 
@@ -385,6 +385,133 @@ int mailpop3_connect(mailpop3 * f, mailstream * s)
 
   return MAILPOP3_NO_ERROR;
 }
+
+/*
+ * Authenticate with oauth2
+ *
+ * @author jonathan.price@chlsoftware.com
+ */
+
+int mailpop3_oauth2_authenticate(mailpop3 *f, const char *auth_user, const char *access_token)
+{
+  char command[POP3_STRING_SIZE];
+  int r;
+  char *response;
+
+  if(f->pop3_state != POP3_STATE_AUTHORIZATION)
+    return MAILPOP3_ERROR_BAD_STATE;
+
+
+  /* send user command */
+  char *ptr;
+  char *full_auth_string;
+  char *full_auth_string_b64;
+  size_t auth_user_len;
+  size_t access_token_len;
+  size_t full_auth_string_len;
+  int res;
+
+
+  full_auth_string = NULL;
+  full_auth_string_b64 = NULL;
+
+
+  /* Build client response string */
+  auth_user_len = strlen(auth_user);
+  access_token_len = strlen(access_token);
+  full_auth_string_len = 5 + auth_user_len + 1 + 12 + access_token_len + 2;
+  full_auth_string = malloc(full_auth_string_len + 1);
+  if(full_auth_string == NULL)
+  {
+    res = MAILPOP3_ERROR_STREAM;
+    goto free;
+  }
+
+
+  ptr = memcpy(full_auth_string, "user=", 5);
+  ptr = memcpy(ptr + 5, auth_user, auth_user_len);
+  ptr = memcpy(ptr + auth_user_len, "\1auth=Bearer ", 13);
+  ptr = memcpy(ptr + 13, access_token, access_token_len);
+  ptr = memcpy(ptr + access_token_len, "\1\1\0", 3);
+
+
+  /* Convert to base64 */
+  full_auth_string_b64 = encode_base64(full_auth_string, (int) full_auth_string_len);
+  if(full_auth_string_b64 == NULL)
+  {
+    res = MAILPOP3_ERROR_STREAM;
+    goto free;
+  }
+
+
+  snprintf(command, POP3_STRING_SIZE, "AUTH XOAUTH2\r\n");
+  r = send_command_private(f, command, 0);
+  if(r == -1)
+  {
+    res = MAILPOP3_ERROR_STREAM;
+    goto free;
+  }
+
+  response = read_line(f);
+  if(response == NULL)
+  {
+    return MAILPOP3_ERROR_STREAM;
+    goto free;
+  }
+  //Should return a + if all good. parse_response(f, response)?
+  if(strcmp(response, "+ ") != 0)
+  {
+    res = MAILPOP3_ERROR_BAD_USER;
+    goto free;
+  }
+
+  int strLen = (int) strlen(full_auth_string_b64);
+  char *biggercommand = malloc(strLen + 5); //make a bigger buffer, pad it a little.
+
+
+  if(biggercommand == NULL)
+  {
+    res = MAILPOP3_ERROR_STREAM;
+    goto free;
+  }
+
+  snprintf(biggercommand, strLen + 5, "%s\r\n", full_auth_string_b64);
+  r = send_command_private(f, biggercommand, 0);
+  if(r == -1)
+  {
+    free(biggercommand);
+    res = MAILPOP3_ERROR_STREAM;
+    goto free;
+  }
+  free(biggercommand);
+
+
+  response = read_line(f);
+  if(response == NULL)
+  {
+    res = MAILPOP3_ERROR_STREAM;
+    goto free;
+  }
+
+
+  r = parse_response(f, response);
+
+  if(r != RESPONSE_OK)
+    res = MAILPOP3_ERROR_BAD_USER;
+  else
+  {
+    f->pop3_state = POP3_STATE_TRANSACTION;
+    res = MAILPOP3_NO_ERROR;
+  }
+
+
+  free:
+  free(full_auth_string);
+  free(full_auth_string_b64);
+  return res;
+}
+
+
 
 
 /*

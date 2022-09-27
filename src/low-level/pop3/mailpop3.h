@@ -70,6 +70,9 @@ LIBETPAN_EXPORT
 int mailpop3_connect(mailpop3 * f, mailstream * s);
 
 LIBETPAN_EXPORT
+int mailpop3_oauth2_authenticate(mailpop3 * f, const char *auth_user, const char * access_token);
+    
+LIBETPAN_EXPORT
 int mailpop3_quit(mailpop3 * f);
 
 LIBETPAN_EXPORT
