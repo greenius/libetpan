@@ -4515,13 +4515,11 @@ int mailimap_hack_date_time_parse(char * str,
   r = mailimap_date_time_no_quote_parse(fd, buffer, NULL, &cur_token, &date_time,
                                         progr_rate, progr_fun);
   if (r != MAILIMAP_NO_ERROR) {
-    mmap_string_free(buffer);
     return r;
   }
   
   * result = date_time;
   
-  mmap_string_free(buffer);
   return MAILIMAP_NO_ERROR;
 }
 
@@ -6024,7 +6022,7 @@ static int mailimap_literal_parse_progress(mailstream * fd, MMAPString * buffer,
 		mailimap_space_parse(fd, buffer, &cur_token);
 		mailimap_space_parse(fd, buffer, &cur_token);
 	}
-  else if (r != MAILIMAP_NO_ERROR) {
+  if (r != MAILIMAP_NO_ERROR) {
     res = r;
     goto err;
   }

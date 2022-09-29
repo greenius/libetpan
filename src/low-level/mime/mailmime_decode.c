@@ -387,7 +387,6 @@ int mailmime_encoded_word_parse(const char * message, size_t length,
   char * charset;
   int encoding;
   char * body;
-  char * reallocated_body;
   size_t old_body_len;
   char * text;
   size_t end_encoding;
@@ -500,12 +499,11 @@ int mailmime_encoded_word_parse(const char * message, size_t length,
         }
       }
 
-      reallocated_body = realloc(body, old_body_len + copy_len + 1);
-      if (reallocated_body == NULL) {
+      body = realloc(body, old_body_len + copy_len + 1);
+      if (body == NULL) {
         res = MAILIMF_ERROR_MEMORY;
         goto free_body;
       }
-      body = reallocated_body;
 
       memcpy(body + old_body_len, &message[cur_token], copy_len);
       body[old_body_len + copy_len] = '\0';

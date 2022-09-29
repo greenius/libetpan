@@ -1,15 +1,16 @@
 #! /bin/bash -
 
-set -e
-
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
-version=2.1.28
+version=2.1.26
 ARCHIVE=cyrus-sasl-$version
 ARCHIVE_NAME=$ARCHIVE.tar.gz
 ARCHIVE_PATCH=$ARCHIVE.patch
+#url=ftp://ftp.andrew.cmu.edu/pub/cyrus-mail/$ARCHIVE_NAME
+#url=ftp://ftp.cyrusimap.org/cyrus-sasl/$ARCHIVE_NAME
+#url=https://www.cyrusimap.org/releases/$ARCHIVE_NAME
 url=https://github.com/cyrusimap/cyrus-sasl/releases/download/$ARCHIVE/$ARCHIVE_NAME
-parallel_mode=0
+patchfile=cyrus-2.1.25-libetpan.patch
 
 scriptdir="`pwd`"
 
@@ -22,8 +23,6 @@ srcdir="$tempbuilddir/src"
 logdir="$tempbuilddir/log"
 resultdir="$builddir/builds"
 tmpdir="$tempbuilddir/tmp"
-
-BUILD="$(uname -m)"
 
 mkdir -p "$resultdir"
 mkdir -p "$logdir"
@@ -72,13 +71,12 @@ logfile="$srcdir/$ARCHIVE/build.log"
 echo "*** patching sources ***" > "$logfile" 2>&1
 
 cd "$srcdir/$ARCHIVE"
-
+patch -p1 < $current_dir/$patchfile
 # patch source files
-
 cd "$srcdir/$ARCHIVE/include"
-sed -E 's/\.\/\$< /.\/\$<'$BUILD' /' < Makefile.am > Makefile.am.new
+sed -E 's/\.\/\$< /.\/\$<i386 /' < Makefile.am > Makefile.am.new
 mv Makefile.am.new Makefile.am
-sed -E 's/\.\/\$< /.\/\$<'$BUILD' /' < Makefile.in > Makefile.in.new
+sed -E 's/\.\/\$< /.\/\$<i386 /' < Makefile.in > Makefile.in.new
 mv Makefile.in.new Makefile.in
 cd "$srcdir/$ARCHIVE/lib"
 sed -E 's/\$\(AR\) cru \.libs\/\$@ \$\(SASL_STATIC_OBJS\)/&; \$\(RANLIB\) .libs\/\$@/' < Makefile.in > Makefile.in.new
@@ -102,8 +100,8 @@ if [[ "$?" != "0" ]]; then
   exit 1
 fi
 cd ..
-echo generated makemd5$BUILD properly
-mv "$srcdir/$ARCHIVE/include/makemd5" "$srcdir/$ARCHIVE/include/makemd5$BUILD"
+echo generated makemd5i386 properly
+mv "$srcdir/$ARCHIVE/include/makemd5" "$srcdir/$ARCHIVE/include/makemd5i386"
 make clean >>"$logfile" 2>&1
 make distclean >>"$logfile" 2>&1
 find . -name config.cache -print0 | xargs -0 rm
@@ -124,57 +122,6 @@ if test "x$NOBITCODE" != x ; then
    BITCODE_FLAGS=""
 fi
 
-xcode_developer="$(xcode-select -p)"
-
-function build_target {
-  local current_logfile="$srcdir/$ARCHIVE-$TARGET-$MARCH/build.log"
-  echo "log to $current_logfile"
-  cp -R "$srcdir/$ARCHIVE" "$srcdir/$ARCHIVE-$TARGET-$MARCH"
-  
-  cd "$srcdir/$ARCHIVE-$TARGET-$MARCH"
-  
-  echo "*** building for $TARGET - $MARCH ***" >> "$current_logfile" 2>&1
-  
-  local PREFIX=${BUILD_DIR}/${LIB_NAME}/${TARGET}${SDK_IOS_VERSION}${MARCH}
-  rm -rf $PREFIX
-  
-  local CURRENT_TARGET="$MARCH-apple-ios${SDK_IOS_MIN_VERSION}${TARGET_SUFFIX}"
-  export CPPFLAGS="-isysroot ${SYSROOT} -target ${CURRENT_TARGET} -Os"
-  export CFLAGS="${CPPFLAGS} ${EXTRA_FLAGS}"
-  export CC="$xcode_developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
-  export CXX="$xcode_developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++"
-  export LD="$xcode_developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld"
-  export AR="$xcode_developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar"
-  
-  OPENSSL="--with-openssl=$BUILD_DIR/openssl-1.0.0d/universal"
-  PLUGINS="--enable-otp=no --enable-digest=no --with-des=no --enable-login"
-  ./configure --host=${ARCH} --prefix=$PREFIX --enable-shared=no --enable-static=yes --with-pam=$BUILD_DIR/openpam-20071221/universal $PLUGINS >> "$current_logfile" 2>&1
-  make -j 8 >> "$current_logfile" 2>&1
-  if [[ "$?" != "0" ]]; then
-    echo "CONFIGURE FAILED"
-    cat "$current_logfile"
-    exit 1
-  fi
-  cd lib
-  make install >> "$current_logfile" 2>&1
-  cd ..
-  cd include
-  make install >> "$current_logfile" 2>&1
-  cd ..
-  cd plugins
-  make install >> "$current_logfile" 2>&1
-  cd ..
-  if [[ "$?" != "0" ]]; then
-    echo "BUILD FAILED"
-    cat "$current_logfile"
-    exit 1
-  fi
-  make clean >> "$current_logfile" 2>&1
-  make distclean >> "$current_logfile" 2>&1
-  find . -name config.cache -print0 | xargs -0 rm
-}
-
-pids=""
 for TARGET in $TARGETS; do
 
     DEVELOPER="$(xcode-select --print-path)"
@@ -186,35 +133,52 @@ for TARGET in $TARGETS; do
             ARCH=arm
             MARCHS="armv7 armv7s arm64"
             EXTRA_FLAGS="$BITCODE_FLAGS -miphoneos-version-min=$SDK_IOS_MIN_VERSION"
-            TARGET_SUFFIX=""
             ;;
         (iPhoneSimulator)
             ARCH=i386
-            MARCHS="i386 x86_64 arm64"
-            EXTRA_FLAGS="$BITCODE_FLAGS -miphoneos-version-min=$SDK_IOS_MIN_VERSION"
-            TARGET_SUFFIX="-simulator"
+            MARCHS="i386 x86_64"
+            EXTRA_FLAGS="-miphoneos-version-min=$SDK_IOS_MIN_VERSION"
             ;;
     esac
 
     for MARCH in $MARCHS; do
+				echo "building for $TARGET - $MARCH"
+				echo "*** building for $TARGET - $MARCH ***" >> "$logfile" 2>&1
 
-        echo "building for $TARGET - $MARCH"
-        build_target &
-        pid="$!"
-        pids="$pids $pid"
-        if test "x$parallel_mode" != x1 ; then
-          wait "$pid"
+        PREFIX=${BUILD_DIR}/${LIB_NAME}/${TARGET}${SDK_IOS_VERSION}${MARCH}
+        rm -rf $PREFIX
+
+        export CPPFLAGS="-arch ${MARCH} -isysroot ${SYSROOT}"
+        export CFLAGS="${CPPFLAGS} -Os ${EXTRA_FLAGS}"
+
+        OPENSSL="--with-openssl=$BUILD_DIR/openssl-1.0.0d/universal"
+        PLUGINS="--enable-otp=no --enable-digest=no --with-des=no --enable-login"
+        ./configure --host=${ARCH} --prefix=$PREFIX --enable-shared=no --enable-static=yes --with-pam=$BUILD_DIR/openpam-20071221/universal $PLUGINS >> "$logfile" 2>&1
+        make -j 8 >> "$logfile" 2>&1
+        if [[ "$?" != "0" ]]; then
+          echo "CONFIGURE FAILED"
+          cat "$logfile"
+          exit 1
         fi
+        cd lib
+        make install >> "$logfile" 2>&1
+        cd ..
+        cd include
+        make install >> "$logfile" 2>&1
+        cd ..
+        cd plugins
+        make install >> "$logfile" 2>&1
+        cd ..
+        if [[ "$?" != "0" ]]; then
+          echo "BUILD FAILED"
+          cat "$logfile"
+          exit 1
+        fi
+        make clean >> "$logfile" 2>&1
+        make distclean >> "$logfile" 2>&1
+        find . -name config.cache -print0 | xargs -0 rm
       done
 done
-
-if test "x$parallel_mode" = x1 ; then
-  for pid in $pids; do
-      wait $pid || exit 1
-  done
-fi
-
-cd "$srcdir/$ARCHIVE"
 
 echo "*** creating universal libs ***" >> "$logfile" 2>&1
 
@@ -229,16 +193,11 @@ for lib in $ALL_LIBS; do
     if [[ "$dir" != "." ]]; then
         mkdir -p ${INSTALL_PATH}/lib/$dir
     fi
-
-    LIBS="${BUILD_DIR}/${LIB_NAME}/iPhoneOS${SDK_IOS_VERSION}*/lib/${lib}"
-    output="${INSTALL_PATH}/lib/iphoneos/${lib}"
-    mkdir -p "$(dirname "$output")"
-    lipo -create ${LIBS} -output "$output"
-
-    LIBS="${BUILD_DIR}/${LIB_NAME}/iPhoneSimulator${SDK_IOS_VERSION}*/lib/${lib}"
-    output="${INSTALL_PATH}/lib/iphonesimulator/${lib}"
-    mkdir -p "$(dirname "$output")"
-    lipo -create ${LIBS} -output "$output"
+    LIBS=
+    for TARGET in $TARGETS; do
+        LIBS="$LIBS ${BUILD_DIR}/${LIB_NAME}/${TARGET}${SDK_IOS_VERSION}*/lib/${lib}"
+    done
+    lipo -create ${LIBS} -output "${INSTALL_PATH}/lib/${lib}"
 done
 
 echo "*** creating built package ***" >> "$logfile" 2>&1
@@ -251,6 +210,7 @@ mkdir -p "$resultdir"
 mv "libsasl-$version-ios.tar.gz" "$resultdir"
 cd "$resultdir"
 ln -s "libsasl-$version-ios.tar.gz" "libsasl-prebuilt-ios.tar.gz"
+rm -rf "$tempbuilddir"
 
 cd "$scriptdir/.."
 tar xzf "$resultdir/libsasl-$version-ios.tar.gz"
