@@ -1419,9 +1419,7 @@ int mailimf_quoted_string_parse(const char * message, size_t length,
 	goto free_gstr;
       }
     }
-    else if (r == MAILIMF_ERROR_PARSE) {
-        break;
-    } else {
+    else if (r != MAILIMF_ERROR_PARSE) {
       res = r;
       goto free_gstr;
     }
